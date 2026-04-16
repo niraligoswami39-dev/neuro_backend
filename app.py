@@ -1,19 +1,12 @@
-# =========================
-# IMPORTS
-# =========================
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import hashlib
-import numpy as np
+import time
+import traceback
 
-# =========================
-# APP INIT
-# =========================
 app = FastAPI()
 
-# =========================
-# CORS (IMPORTANT)
-# =========================
+# ✅ Allow frontend requests (important)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,59 +15,100 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
-# ROOT TEST
-# =========================
+print("🚀 Starting NeuroPulse Backend...")
+
+# ================================
+# 🔹 ROOT CHECK
+# ================================
 @app.get("/")
 def home():
-    return {"message": "NeuroPulse Backend Running"}
+    return {"status": "NeuroPulse Backend Running 🚀"}
 
-# =========================
-# SIGNATURE GENERATION (REAL)
-# =========================
-def generate_signature(content):
-
-    # Convert bytes → numeric array
-    arr = np.frombuffer(content, dtype=np.uint8)
-
-    if len(arr) == 0:
-        return [0]*16
-
-    # Split into 16 equal parts
-    chunks = np.array_split(arr, 16)
-
-    # Mean of each chunk → stable fingerprint
-    signature = [float(chunk.mean()) for chunk in chunks]
-
-    return signature
+@app.get("/test")
+def test():
+    return {"message": "API working perfectly ✅"}
 
 
-# =========================
-# ANALYZE API
-# =========================
-@app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
+# ================================
+# 🔹 FILE HASH FUNCTION
+# ================================
+def generate_hash(data):
+    return hashlib.sha256(data).hexdigest()
 
-    # Read file
-    content = await file.read()
 
-    # =========================
-    # HASH (REAL)
-    # =========================
-    file_hash = hashlib.sha256(content).hexdigest()
+# ================================
+# 🔹 COMPARE FILES API
+# ================================
+@app.post("/compare")
+async def compare_files(file1: UploadFile = File(...), file2: UploadFile = File(...)):
+    try:
+        start_time = time.time()
 
-    # =========================
-    # SIGNATURE (REAL)
-    # =========================
-    signature = generate_signature(content)
+        data1 = await file1.read()
+        data2 = await file2.read()
 
-    # =========================
-    # RESPONSE
-    # =========================
-    return {
-        "filename": file.filename,
-        "size_bytes": len(content),
-        "file_type": file.content_type,
-        "hash": file_hash,
-        "signature": signature
-    }
+        # 🔹 Basic metadata
+        size1 = len(data1)
+        size2 = len(data2)
+
+        # 🔹 Hash check
+        hash1 = generate_hash(data1)
+        hash2 = generate_hash(data2)
+
+        hash_match = hash1 == hash2
+
+        # 🔹 Simple similarity logic
+        similarity = 100 if hash_match else round((min(size1, size2) / max(size1, size2)) * 100, 2)
+
+        # 🔹 Behavior detection
+        behavior = []
+        if hash_match:
+            behavior.append("⚠️ Exact duplicate files detected")
+
+        if abs(size1 - size2) < 100:
+            behavior.append("⚠️ Very similar file sizes")
+
+        if similarity > 80:
+            behavior.append("⚠️ High similarity pattern")
+
+        if not behavior:
+            behavior.append("✅ No suspicious behavior")
+
+        # 🔹 Case ID
+        case_id = f"NP-{int(time.time())}"
+
+        end_time = time.time()
+
+        return {
+            "case_id": case_id,
+            "file1": {
+                "filename": file1.filename,
+                "size_bytes": size1
+            },
+            "file2": {
+                "filename": file2.filename,
+                "size_bytes": size2
+            },
+            "hash_match": hash_match,
+            "similarity": similarity,
+            "behavior": behavior,
+            "processing_time": round(end_time - start_time, 2)
+        }
+
+    except Exception as e:
+        print("❌ ERROR in /compare:")
+        print(traceback.format_exc())
+        return {
+            "error": "Something went wrong",
+            "details": str(e)
+        }
+
+
+# ================================
+# 🔹 STARTUP CHECK
+# ================================
+try:
+    print("✅ App loaded successfully")
+except Exception:
+    print("❌ Startup error:")
+    print(traceback.format_exc())
